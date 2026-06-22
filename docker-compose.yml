@@ -1,0 +1,43 @@
+services:
+  datadog-agent:
+    image: gcr.io/datadoghq/agent:7
+    environment:
+      - DD_API_KEY=${DD_API_KEY}
+      - DD_SITE=${DD_SITE:-datadoghq.com}
+      - DD_APM_ENABLED=true
+      - DD_APM_NON_LOCAL_TRAFFIC=true
+      - DD_LOGS_ENABLED=true
+      - DD_PROCESS_AGENT_ENABLED=true
+    # No "ports:" mapping here on purpose. checkout-service and
+    # payment-service reach this agent over the internal Docker network
+    # using the hostname "datadog-agent" (see DD_AGENT_HOST below), so we
+    # don't need to publish 8125/8126 to the host. This also avoids
+    # conflicting with a Datadog Agent that may already be installed
+    # directly on the host machine.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
+
+  payment-service:
+    build: ./service-b
+    environment:
+      - DD_AGENT_HOST=datadog-agent
+      - DD_SERVICE=payment-service
+      - DD_ENV=demo
+    ports:
+      - "8082:8082"
+    depends_on:
+      - datadog-agent
+
+  checkout-service:
+    build: ./service-a
+    environment:
+      - DD_AGENT_HOST=datadog-agent
+      - DD_SERVICE=checkout-service
+      - DD_ENV=demo
+      - PAYMENT_SERVICE_URL=http://payment-service:8082
+    ports:
+      - "8081:8081"
+    depends_on:
+      - payment-service
